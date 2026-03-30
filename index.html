@@ -14,6 +14,9 @@
     
     <!-- Babel (JSX'i tarayıcıda derlemek için) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- SheetJS (Gerçek Excel .xlsx Çıktısı İçin) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
     <div id="root"></div>
@@ -207,35 +210,51 @@
             });
           }, [rows, cols, panelWidth, panelLength, panelThickness, orientation, blockCount, roofType, mountingSystem, railDirection, ribSpacing, prices]);
 
-          const handleExportCSV = () => {
+          // Excel .xlsx İndirme Fonksiyonu
+          const handleExportExcel = () => {
             if (!bom.items || bom.items.length === 0) return;
             
-            const headers = ["Malzeme Adi", "Teknik Ozellik", "Miktar", "Birim", "Birim Fiyat (USD)", "Toplam Fiyat (USD)"];
-            const csvRows = [headers.join(",")];
+            // Excel verisini hazırlama (İki boyutlu dizi)
+            const excelData = [];
             
+            // Başlık satırı
+            excelData.push(["Malzeme Adı", "Teknik Özellik", "Miktar", "Birim", "Birim Fiyat (USD)", "Toplam Fiyat (USD)"]);
+            
+            // Veri satırları
             bom.items.forEach(item => {
-              const row = [
-                `"${item.name}"`,
-                `"${item.spec}"`,
-                item.qty,
-                `"${item.unit}"`,
-                item.price.toFixed(2),
-                item.total.toFixed(2)
-              ];
-              csvRows.push(row.join(","));
+              excelData.push([
+                item.name,
+                item.spec,
+                item.qty, // Sayı olarak ekliyoruz
+                item.unit,
+                Number(item.price.toFixed(2)), // Sayı formatı (Excel'de hesap yapılabilmesi için)
+                Number(item.total.toFixed(2))
+              ]);
             });
             
-            csvRows.push(`"","","","","Genel Toplam:","${bom.totalCost.toFixed(2)}"`);
-            
-            const csvString = "\ufeff" + csvRows.join("\n");
-            const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "GES_Metraj_ve_Maliyet.csv";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
+            // Boş satır ve Genel Toplam
+            excelData.push(["", "", "", "", "", ""]);
+            excelData.push(["", "", "", "", "Genel Toplam:", Number(bom.totalCost.toFixed(2))]);
+
+            // Veriden Worksheet (Sayfa) oluştur
+            const ws = XLSX.utils.aoa_to_sheet(excelData);
+
+            // Sütun genişliklerini ayarla
+            ws['!cols'] = [
+              { wch: 35 }, // Malzeme Adı
+              { wch: 50 }, // Teknik Özellik
+              { wch: 10 }, // Miktar
+              { wch: 10 }, // Birim
+              { wch: 18 }, // Birim Fiyat (USD)
+              { wch: 18 }  // Toplam Fiyat (USD)
+            ];
+
+            // Yeni bir Workbook (Çalışma Kitabı) oluştur ve sayfayı ekle
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "GES Maliyet");
+
+            // Dosyayı İndir
+            XLSX.writeFile(wb, "GES_Metraj_ve_Maliyet.xlsx");
           };
 
           const handlePriceChange = (key, value) => {
@@ -570,7 +589,7 @@
                           <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold border border-blue-100 hidden md:block">
                             {bom.roofType === 'flat' ? 'Raysız Ayak Sistemi' : 'Raylı Sistem'}
                           </span>
-                          <button onClick={handleExportCSV} className="flex items-center space-x-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-sm">
+                          <button onClick={handleExportExcel} className="flex items-center space-x-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-sm">
                             <FileSpreadsheet size={16} />
                             <span>Excel'e Aktar</span>
                           </button>
