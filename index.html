@@ -71,7 +71,8 @@
             splice: 1.5,
             boltSet: 0.2,
             anchor: 0.5,
-            screw: 0.1
+            ejotScrew: 0.15, // Yeni: Sandviç/Trapez için Ejot Vida
+            woodScrew: 0.10  // Yeni: Kiremit kancası için Trifon vida
           });
 
           // Hesaplanan Değerler
@@ -170,10 +171,21 @@
 
             if (roofType === 'tile') {
               items.push({ id: 'hook', name: 'Kiremit Çatı Kancası', spec: 'A2 Paslanmaz Çelik, 3 ayarlı', qty: totalHooks, unit: 'Adet', price: prices.hook, total: totalHooks * prices.hook });
+              
+              const woodScrewQty = totalHooks * 2; // Her kancaya en az 2 trifon vida
+              items.push({ id: 'wood_screw', name: 'Ahşap Çatı Vidası (Trifon)', spec: '8x80mm / 8x100mm, Merteğe sabitleme için', qty: woodScrewQty, unit: 'Adet', price: prices.woodScrew, total: woodScrewQty * prices.woodScrew });
             }
 
-            if (roofType === 'sandwich' && mountingSystem === 'continuous') {
-              items.push({ id: 'lfeet', name: 'Trapez Çatı L-Ayak Seti', spec: 'EPDM Contalı, Alüminyum L ayak', qty: totalLFeet, unit: 'Adet', price: prices.lFeet, total: totalLFeet * prices.lFeet });
+            if (roofType === 'sandwich') {
+              if (mountingSystem === 'continuous') {
+                items.push({ id: 'lfeet', name: 'Trapez Çatı L-Ayak Seti', spec: 'EPDM Contalı, Alüminyum L ayak', qty: totalLFeet, unit: 'Adet', price: prices.lFeet, total: totalLFeet * prices.lFeet });
+                
+                const ejotQty = totalLFeet * 2; // Her L-Ayak için 2 Ejot
+                items.push({ id: 'ejot_screw', name: 'Sandviç/Trapez Çatı Vidası (Ejot)', spec: 'Semerli, sızdırmaz EPDM contalı akıllı vida', qty: ejotQty, unit: 'Adet', price: prices.ejotScrew, total: ejotQty * prices.ejotScrew });
+              } else if (mountingSystem === 'short') {
+                const ejotQty = totalShortProfiles * 4; // Her kısa profil için 4 Ejot
+                items.push({ id: 'ejot_screw', name: 'Sandviç/Trapez Çatı Vidası (Ejot)', spec: 'Semerli, sızdırmaz EPDM contalı akıllı vida', qty: ejotQty, unit: 'Adet', price: prices.ejotScrew, total: ejotQty * prices.ejotScrew });
+              }
             }
 
             items.push({ id: 'midclamp', name: 'Panel Orta Tutucu (Mid-Clamp)', spec: `Alüminyum, ${panelThickness}mm çerçeveye uygun`, qty: totalMidClamps, unit: 'Adet', price: prices.midClamp, total: totalMidClamps * prices.midClamp });
@@ -182,11 +194,6 @@
             if (isFlatRoof) {
               const qty = totalTriangles * 4;
               items.push({ id: 'anchor', name: 'Beton Montaj Dübeli', spec: 'M8/M10 Çelik çekmeli veya kimyasal dübel', qty: qty, unit: 'Adet', price: prices.anchor, total: qty * prices.anchor });
-            }
-
-            if (roofType === 'sandwich' && mountingSystem === 'short') {
-              const qty = totalShortProfiles * 4;
-              items.push({ id: 'screw', name: 'Trapez Çatı Vidası', spec: 'Semerli, sızdırmaz contalı akıllı vida', qty: qty, unit: 'Adet', price: prices.screw, total: qty * prices.screw });
             }
 
             if (totalSplices > 0) {
@@ -421,6 +428,21 @@
                             <input type="number" step="0.1" value={prices.lFeet} onChange={(e) => handlePriceChange('lFeet', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
                           </div>
                         )}
+                        
+                        {/* Yeni: Çatı Tipine Göre Ejot Veya Trifon Vida Girdileri */}
+                        {bom.roofType === 'sandwich' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1">Ejot Vida (/Adet)</label>
+                            <input type="number" step="0.05" value={prices.ejotScrew} onChange={(e) => handlePriceChange('ejotScrew', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                          </div>
+                        )}
+                        {bom.roofType === 'tile' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1">Trifon Vida (/Adet)</label>
+                            <input type="number" step="0.05" value={prices.woodScrew} onChange={(e) => handlePriceChange('woodScrew', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                          </div>
+                        )}
+
                         <div>
                           <label className="block text-slate-500 mb-1">Orta Tutucu</label>
                           <input type="number" step="0.05" value={prices.midClamp} onChange={(e) => handlePriceChange('midClamp', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
