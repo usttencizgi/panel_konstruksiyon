@@ -1,611 +1,625 @@
-import React, { useState, useEffect } from 'react';
-import { Settings, Grid, Wrench, DollarSign, Info, FileSpreadsheet } from 'lucide-react';
-
-const App = () => {
-  // Kullanıcı Girdileri
-  const [rows, setRows] = useState(2);
-  const [cols, setCols] = useState(6);
-  const [blockCount, setBlockCount] = useState(1);
-  const [roofType, setRoofType] = useState('flat'); // Görseldeki gibi varsayılan Düz Beton
-  const [orientation, setOrientation] = useState('landscape'); // Düz çatıda mecburi yatay
-  const [mountingSystem, setMountingSystem] = useState('continuous'); 
-  const [railDirection, setRailDirection] = useState('horizontal');
-  const [ribSpacing, setRibSpacing] = useState(50); // cm
-  const [panelWidth, setPanelWidth] = useState(1134); // mm
-  const [panelLength, setPanelLength] = useState(2278); // mm
-  const [panelThickness, setPanelThickness] = useState(30); // mm
-  
-  // Birim Fiyatlar (USD) - Yeni Eklendi
-  const [prices, setPrices] = useState({
-    rail: 4.5,
-    hook: 3.0,
-    triangle: 22.0,
-    lFeet: 2.5,
-    shortProfile: 1.2,
-    midClamp: 0.5,
-    endClamp: 0.5,
-    splice: 1.5,
-    boltSet: 0.2,
-    anchor: 0.5,
-    screw: 0.1
-  });
-
-  // Hesaplanan Değerler
-  const [bom, setBom] = useState({ items: [] });
-  
-  // Sabitler
-  const midClampGap = 20; // mm
-  const railOverhang = 50; // mm 
-  const hookSpacing = 1000; // mm 
-  const standardRailLength = 6000; // mm 
-
-  // Hesaplama Mantığı
-  useEffect(() => {
-    // Düz çatı seçiliyse mecburen yatay yerleşim geçerli olur
-    const isFlatRoof = roofType === 'flat';
-    const activeOrientation = isFlatRoof ? 'landscape' : orientation;
-    const isPortrait = activeOrientation === 'portrait';
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Çatı GES Konstrüksiyon Hesaplayıcı</title>
     
-    // Düz çatıda sürekli ray veya kısa profil yoktur, doğrudan ayak sistemi vardır.
-    const isContinuous = !isFlatRoof && (mountingSystem === 'continuous' || roofType === 'tile'); 
-    const isRailHorizontal = railDirection === 'horizontal';
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
     
-    const isSharedRail = !isFlatRoof && ((!isPortrait && isRailHorizontal) || (isPortrait && !isRailHorizontal));
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     
-    const effectiveWidth = isPortrait ? panelWidth : panelLength;
-    const effectiveLength = isPortrait ? panelLength : panelWidth;
+    <!-- Babel (JSX'i tarayıcıda derlemek için) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <div id="root"></div>
 
-    let railLengthPerLine = 0;
-    let numLinesPerBlock = 0;
-    let totalMidClamps = 0;
-    let totalEndClamps = 0;
-    let totalHooks = 0;
-    let totalTriangles = 0;
-    let totalLFeet = 0;
-    let totalSplices = 0;
-    let totalRailLengthMeters = 0;
-    let totalShortProfiles = 0;
+    <script type="text/babel">
+        const { useState, useEffect } = React;
 
-    if (isFlatRoof) {
-      // Düz Beton Çatı (Raysız Ayak Sistemi - Görseldeki gibi)
-      // Ayaklar panellerin sağ ve sol kısa kenarlarına (birleşim yerlerine) gelir.
-      // Her satırda (sütun sayısı + 1) adet ayak seti (ön/arka bacak) bulunur.
-      totalTriangles = (cols + 1) * rows * blockCount;
-      totalMidClamps = (cols - 1) * 2 * rows * blockCount;
-      totalEndClamps = 4 * rows * blockCount;
-      // Ray uzunluğu 0'dır, çünkü ekstra sigma profil yoktur.
-      totalRailLengthMeters = 0; 
-      railLengthPerLine = (cols * panelLength) + ((cols - 1) * midClampGap); // Bilgi amaçlı toplam genişlik
-    } else {
-      // Kiremit ve Sandviç Çatı Hesaplamaları
-      if (isRailHorizontal) {
-        railLengthPerLine = (cols * effectiveWidth) + ((cols - 1) * midClampGap) + (railOverhang * 2);
-        numLinesPerBlock = isSharedRail ? (rows + 1) : (rows * 2);
-        totalEndClamps = numLinesPerBlock * 2;
-        totalMidClamps = numLinesPerBlock * (cols - 1);
-      } else {
-        railLengthPerLine = (rows * effectiveLength) + ((rows - 1) * midClampGap) + (railOverhang * 2);
-        numLinesPerBlock = isSharedRail ? (cols + 1) : (cols * 2);
-        totalEndClamps = numLinesPerBlock * 2;
-        totalMidClamps = numLinesPerBlock * (rows - 1);
-      }
+        // --- İkonlar (Lucide React yerine Inline SVG olarak tanımlandı) ---
+        const Wrench = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+        );
+        const Settings = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        );
+        const Grid = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+        );
+        const DollarSign = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+        );
+        const Info = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        );
+        const FileSpreadsheet = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>
+        );
+        // -------------------------------------------------------------------
 
-      totalMidClamps *= blockCount;
-      totalEndClamps *= blockCount;
-
-      if (isContinuous) {
-        const supportsPerRail = Math.ceil(railLengthPerLine / hookSpacing) + 1;
-        const totalSupports = supportsPerRail * numLinesPerBlock * blockCount;
-        
-        if (roofType === 'tile') totalHooks = totalSupports;
-        else if (roofType === 'sandwich') totalLFeet = totalSupports;
-
-        const splicesPerLine = Math.max(0, Math.ceil(railLengthPerLine / standardRailLength) - 1);
-        totalSplices = splicesPerLine * numLinesPerBlock * blockCount;
-        totalRailLengthMeters = ((railLengthPerLine * numLinesPerBlock) / 1000) * blockCount;
-      } else {
-        totalShortProfiles = totalMidClamps + totalEndClamps;
-        const pieceLength = (ribSpacing * 10) + 50; 
-        totalRailLengthMeters = (totalShortProfiles * pieceLength) / 1000;
-      }
-    }
-    
-    // Civata hesabı
-    const totalBolts = isFlatRoof
-      ? totalTriangles * 4 + totalMidClamps + totalEndClamps // Ayak başı 4 dübel/vida + tutucular
-      : (isContinuous 
-        ? (totalHooks + totalLFeet) + totalMidClamps + totalEndClamps
-        : totalMidClamps + totalEndClamps);
-    
-    // BOM Listesi ve Dinamik Maliyet Hesaplama
-    const items = [];
-
-    if (!isFlatRoof && isContinuous) {
-      items.push({ id: 'rail', name: 'Alüminyum Sigma Profil', spec: '6063 T6, Sürekli alt taşıyıcı ray', qty: totalRailLengthMeters, unit: 'Metre', price: prices.rail, total: totalRailLengthMeters * prices.rail });
-    }
-    
-    if (!isFlatRoof && !isContinuous) {
-      items.push({ id: 'short_rail', name: 'Kısa Alüminyum Profil', spec: `${(ribSpacing * 10) + 50} mm Trapez/Sandviç uyumlu`, qty: totalShortProfiles, unit: 'Adet', price: prices.shortProfile, total: totalShortProfiles * prices.shortProfile, desc: `(${totalRailLengthMeters} m)` });
-    }
-
-    if (isFlatRoof) {
-      items.push({ id: 'triangle', name: 'Açılı Ayak Seti (Raysız Sistem)', spec: 'Kısa ön bacak, Uzun arka bacak, Alt Z/U profil.', qty: totalTriangles, unit: 'Takım', price: prices.triangle, total: totalTriangles * prices.triangle, highlight: true });
-    }
-
-    if (roofType === 'tile') {
-      items.push({ id: 'hook', name: 'Kiremit Çatı Kancası', spec: 'A2 Paslanmaz Çelik, 3 ayarlı', qty: totalHooks, unit: 'Adet', price: prices.hook, total: totalHooks * prices.hook });
-    }
-
-    if (roofType === 'sandwich' && mountingSystem === 'continuous') {
-      items.push({ id: 'lfeet', name: 'Trapez Çatı L-Ayak Seti', spec: 'EPDM Contalı, Alüminyum L ayak', qty: totalLFeet, unit: 'Adet', price: prices.lFeet, total: totalLFeet * prices.lFeet });
-    }
-
-    items.push({ id: 'midclamp', name: 'Panel Orta Tutucu (Mid-Clamp)', spec: `Alüminyum, ${panelThickness}mm çerçeveye uygun`, qty: totalMidClamps, unit: 'Adet', price: prices.midClamp, total: totalMidClamps * prices.midClamp });
-    items.push({ id: 'endclamp', name: 'Panel Kenar Tutucu (End-Clamp)', spec: `Alüminyum, ${panelThickness}mm çerçeveye uygun`, qty: totalEndClamps, unit: 'Adet', price: prices.endClamp, total: totalEndClamps * prices.endClamp });
-
-    if (isFlatRoof) {
-      const qty = totalTriangles * 4;
-      items.push({ id: 'anchor', name: 'Beton Montaj Dübeli', spec: 'M8/M10 Çelik çekmeli veya kimyasal dübel', qty: qty, unit: 'Adet', price: prices.anchor, total: qty * prices.anchor });
-    }
-
-    if (roofType === 'sandwich' && mountingSystem === 'short') {
-      const qty = totalShortProfiles * 4;
-      items.push({ id: 'screw', name: 'Trapez Çatı Vidası', spec: 'Semerli, sızdırmaz contalı akıllı vida', qty: qty, unit: 'Adet', price: prices.screw, total: qty * prices.screw });
-    }
-
-    if (totalSplices > 0) {
-      items.push({ id: 'splice', name: 'Ray Birleştirme Aparatı', spec: 'İçten veya dıştan sıkmalı profil eki', qty: totalSplices, unit: 'Adet', price: prices.splice, total: totalSplices * prices.splice });
-    }
-
-    items.push({ id: 'bolt', name: 'T-Civata ve İmbus Vida Seti', spec: 'M8x25mm / M8x35mm A2 Paslanmaz', qty: totalBolts, unit: 'Takım', price: prices.boltSet, total: totalBolts * prices.boltSet });
-
-    const totalCost = items.reduce((sum, item) => sum + item.total, 0);
-
-    setBom({
-      roofType,
-      mountingSystem: isFlatRoof ? 'bracket-only' : (isContinuous ? 'continuous' : 'short'),
-      activeOrientation,
-      totalPanels: rows * cols * blockCount,
-      railLengthPerLine: (railLengthPerLine / 1000).toFixed(2),
-      totalRailLengthMeters: Math.ceil(totalRailLengthMeters),
-      shortProfileLength: (ribSpacing * 10) + 50,
-      items,
-      totalCost
-    });
-  }, [rows, cols, panelWidth, panelLength, panelThickness, orientation, blockCount, roofType, mountingSystem, railDirection, ribSpacing, prices]);
-
-  const handleExportCSV = () => {
-    if (!bom.items || bom.items.length === 0) return;
-    
-    const headers = ["Malzeme Adi", "Teknik Ozellik", "Miktar", "Birim", "Birim Fiyat (USD)", "Toplam Fiyat (USD)"];
-    const csvRows = [headers.join(",")];
-    
-    bom.items.forEach(item => {
-      const row = [
-        `"${item.name}"`,
-        `"${item.spec}"`,
-        item.qty,
-        `"${item.unit}"`,
-        item.price.toFixed(2),
-        item.total.toFixed(2)
-      ];
-      csvRows.push(row.join(","));
-    });
-    
-    csvRows.push(`"","","","","Genel Toplam:","${bom.totalCost.toFixed(2)}"`);
-    
-    // Excel'de Türkçe karakter sorunu olmaması için BOM (Byte Order Mark) ekliyoruz
-    const csvString = "\ufeff" + csvRows.join("\n");
-    const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "GES_Metraj_ve_Maliyet.csv";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  const handlePriceChange = (key, value) => {
-    setPrices(prev => ({ ...prev, [key]: Number(value) }));
-  };
-
-  const isSharedRailView = roofType !== 'flat' && ((railDirection === 'horizontal' && orientation === 'landscape') || (railDirection === 'vertical' && orientation === 'portrait'));
-  const savedPercentage = isSharedRailView ? Math.round((1 - (railDirection === 'horizontal' ? (rows + 1) / (rows * 2) : (cols + 1) / (cols * 2))) * 100) : 0;
-
-  return (
-    <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-800">
-      <div className="max-w-6xl mx-auto space-y-6">
-        
-        {/* Başlık */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
-          <div className="bg-blue-600 p-3 rounded-xl text-white">
-            <Wrench size={28} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Çatı GES Konstrüksiyon Hesaplayıcı</h1>
-            <p className="text-slate-500">Çatı tiplerine göre gerçekçi metraj ve donanım maliyeti dökümü</p>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        const App = () => {
+          // Kullanıcı Girdileri
+          const [rows, setRows] = useState(2);
+          const [cols, setCols] = useState(6);
+          const [blockCount, setBlockCount] = useState(1);
+          const [roofType, setRoofType] = useState('flat'); // Görseldeki gibi varsayılan Düz Beton
+          const [orientation, setOrientation] = useState('landscape'); // Düz çatıda mecburi yatay
+          const [mountingSystem, setMountingSystem] = useState('continuous'); 
+          const [railDirection, setRailDirection] = useState('horizontal');
+          const [ribSpacing, setRibSpacing] = useState(50); // cm
+          const [panelWidth, setPanelWidth] = useState(1134); // mm
+          const [panelLength, setPanelLength] = useState(2278); // mm
+          const [panelThickness, setPanelThickness] = useState(30); // mm
           
-          {/* Sol Kolon: Girdiler */}
-          <div className="lg:col-span-4 space-y-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <h2 className="text-lg font-semibold mb-4 flex items-center">
-                <Settings className="mr-2 text-blue-600" size={20} />
-                Panel ve Dizilim Ayarları
-              </h2>
-              
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Satır Sayısı</label>
-                    <input type="number" min="1" max="10" value={rows} onChange={(e) => setRows(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          // Birim Fiyatlar (USD)
+          const [prices, setPrices] = useState({
+            rail: 4.5,
+            hook: 3.0,
+            triangle: 22.0,
+            lFeet: 2.5,
+            shortProfile: 1.2,
+            midClamp: 0.5,
+            endClamp: 0.5,
+            splice: 1.5,
+            boltSet: 0.2,
+            anchor: 0.5,
+            screw: 0.1
+          });
+
+          // Hesaplanan Değerler
+          const [bom, setBom] = useState({ items: [] });
+          
+          // Sabitler
+          const midClampGap = 20; // mm
+          const railOverhang = 50; // mm 
+          const hookSpacing = 1000; // mm 
+          const standardRailLength = 6000; // mm 
+
+          // Hesaplama Mantığı
+          useEffect(() => {
+            const isFlatRoof = roofType === 'flat';
+            const activeOrientation = isFlatRoof ? 'landscape' : orientation;
+            const isPortrait = activeOrientation === 'portrait';
+            
+            const isContinuous = !isFlatRoof && (mountingSystem === 'continuous' || roofType === 'tile'); 
+            const isRailHorizontal = railDirection === 'horizontal';
+            
+            const isSharedRail = !isFlatRoof && ((!isPortrait && isRailHorizontal) || (isPortrait && !isRailHorizontal));
+            
+            const effectiveWidth = isPortrait ? panelWidth : panelLength;
+            const effectiveLength = isPortrait ? panelLength : panelWidth;
+
+            let railLengthPerLine = 0;
+            let numLinesPerBlock = 0;
+            let totalMidClamps = 0;
+            let totalEndClamps = 0;
+            let totalHooks = 0;
+            let totalTriangles = 0;
+            let totalLFeet = 0;
+            let totalSplices = 0;
+            let totalRailLengthMeters = 0;
+            let totalShortProfiles = 0;
+
+            if (isFlatRoof) {
+              totalTriangles = (cols + 1) * rows * blockCount;
+              totalMidClamps = (cols - 1) * 2 * rows * blockCount;
+              totalEndClamps = 4 * rows * blockCount;
+              totalRailLengthMeters = 0; 
+              railLengthPerLine = (cols * panelLength) + ((cols - 1) * midClampGap); 
+            } else {
+              if (isRailHorizontal) {
+                railLengthPerLine = (cols * effectiveWidth) + ((cols - 1) * midClampGap) + (railOverhang * 2);
+                numLinesPerBlock = isSharedRail ? (rows + 1) : (rows * 2);
+                totalEndClamps = numLinesPerBlock * 2;
+                totalMidClamps = numLinesPerBlock * (cols - 1);
+              } else {
+                railLengthPerLine = (rows * effectiveLength) + ((rows - 1) * midClampGap) + (railOverhang * 2);
+                numLinesPerBlock = isSharedRail ? (cols + 1) : (cols * 2);
+                totalEndClamps = numLinesPerBlock * 2;
+                totalMidClamps = numLinesPerBlock * (rows - 1);
+              }
+
+              totalMidClamps *= blockCount;
+              totalEndClamps *= blockCount;
+
+              if (isContinuous) {
+                const supportsPerRail = Math.ceil(railLengthPerLine / hookSpacing) + 1;
+                const totalSupports = supportsPerRail * numLinesPerBlock * blockCount;
+                
+                if (roofType === 'tile') totalHooks = totalSupports;
+                else if (roofType === 'sandwich') totalLFeet = totalSupports;
+
+                const splicesPerLine = Math.max(0, Math.ceil(railLengthPerLine / standardRailLength) - 1);
+                totalSplices = splicesPerLine * numLinesPerBlock * blockCount;
+                totalRailLengthMeters = ((railLengthPerLine * numLinesPerBlock) / 1000) * blockCount;
+              } else {
+                totalShortProfiles = totalMidClamps + totalEndClamps;
+                const pieceLength = (ribSpacing * 10) + 50; 
+                totalRailLengthMeters = (totalShortProfiles * pieceLength) / 1000;
+              }
+            }
+            
+            const totalBolts = isFlatRoof
+              ? totalTriangles * 4 + totalMidClamps + totalEndClamps 
+              : (isContinuous 
+                ? (totalHooks + totalLFeet) + totalMidClamps + totalEndClamps
+                : totalMidClamps + totalEndClamps);
+            
+            // BOM Listesi ve Dinamik Maliyet Hesaplama
+            const items = [];
+
+            if (!isFlatRoof && isContinuous) {
+              items.push({ id: 'rail', name: 'Alüminyum Sigma Profil', spec: '6063 T6, Sürekli alt taşıyıcı ray', qty: totalRailLengthMeters, unit: 'Metre', price: prices.rail, total: totalRailLengthMeters * prices.rail });
+            }
+            
+            if (!isFlatRoof && !isContinuous) {
+              items.push({ id: 'short_rail', name: 'Kısa Alüminyum Profil', spec: `${(ribSpacing * 10) + 50} mm Trapez/Sandviç uyumlu`, qty: totalShortProfiles, unit: 'Adet', price: prices.shortProfile, total: totalShortProfiles * prices.shortProfile, desc: `(${totalRailLengthMeters} m)` });
+            }
+
+            if (isFlatRoof) {
+              items.push({ id: 'triangle', name: 'Açılı Ayak Seti (Raysız Sistem)', spec: 'Kısa ön bacak, Uzun arka bacak, Alt Z/U profil.', qty: totalTriangles, unit: 'Takım', price: prices.triangle, total: totalTriangles * prices.triangle, highlight: true });
+            }
+
+            if (roofType === 'tile') {
+              items.push({ id: 'hook', name: 'Kiremit Çatı Kancası', spec: 'A2 Paslanmaz Çelik, 3 ayarlı', qty: totalHooks, unit: 'Adet', price: prices.hook, total: totalHooks * prices.hook });
+            }
+
+            if (roofType === 'sandwich' && mountingSystem === 'continuous') {
+              items.push({ id: 'lfeet', name: 'Trapez Çatı L-Ayak Seti', spec: 'EPDM Contalı, Alüminyum L ayak', qty: totalLFeet, unit: 'Adet', price: prices.lFeet, total: totalLFeet * prices.lFeet });
+            }
+
+            items.push({ id: 'midclamp', name: 'Panel Orta Tutucu (Mid-Clamp)', spec: `Alüminyum, ${panelThickness}mm çerçeveye uygun`, qty: totalMidClamps, unit: 'Adet', price: prices.midClamp, total: totalMidClamps * prices.midClamp });
+            items.push({ id: 'endclamp', name: 'Panel Kenar Tutucu (End-Clamp)', spec: `Alüminyum, ${panelThickness}mm çerçeveye uygun`, qty: totalEndClamps, unit: 'Adet', price: prices.endClamp, total: totalEndClamps * prices.endClamp });
+
+            if (isFlatRoof) {
+              const qty = totalTriangles * 4;
+              items.push({ id: 'anchor', name: 'Beton Montaj Dübeli', spec: 'M8/M10 Çelik çekmeli veya kimyasal dübel', qty: qty, unit: 'Adet', price: prices.anchor, total: qty * prices.anchor });
+            }
+
+            if (roofType === 'sandwich' && mountingSystem === 'short') {
+              const qty = totalShortProfiles * 4;
+              items.push({ id: 'screw', name: 'Trapez Çatı Vidası', spec: 'Semerli, sızdırmaz contalı akıllı vida', qty: qty, unit: 'Adet', price: prices.screw, total: qty * prices.screw });
+            }
+
+            if (totalSplices > 0) {
+              items.push({ id: 'splice', name: 'Ray Birleştirme Aparatı', spec: 'İçten veya dıştan sıkmalı profil eki', qty: totalSplices, unit: 'Adet', price: prices.splice, total: totalSplices * prices.splice });
+            }
+
+            items.push({ id: 'bolt', name: 'T-Civata ve İmbus Vida Seti', spec: 'M8x25mm / M8x35mm A2 Paslanmaz', qty: totalBolts, unit: 'Takım', price: prices.boltSet, total: totalBolts * prices.boltSet });
+
+            const totalCost = items.reduce((sum, item) => sum + item.total, 0);
+
+            setBom({
+              roofType,
+              mountingSystem: isFlatRoof ? 'bracket-only' : (isContinuous ? 'continuous' : 'short'),
+              activeOrientation,
+              totalPanels: rows * cols * blockCount,
+              railLengthPerLine: (railLengthPerLine / 1000).toFixed(2),
+              totalRailLengthMeters: Math.ceil(totalRailLengthMeters),
+              shortProfileLength: (ribSpacing * 10) + 50,
+              items,
+              totalCost
+            });
+          }, [rows, cols, panelWidth, panelLength, panelThickness, orientation, blockCount, roofType, mountingSystem, railDirection, ribSpacing, prices]);
+
+          const handleExportCSV = () => {
+            if (!bom.items || bom.items.length === 0) return;
+            
+            const headers = ["Malzeme Adi", "Teknik Ozellik", "Miktar", "Birim", "Birim Fiyat (USD)", "Toplam Fiyat (USD)"];
+            const csvRows = [headers.join(",")];
+            
+            bom.items.forEach(item => {
+              const row = [
+                `"${item.name}"`,
+                `"${item.spec}"`,
+                item.qty,
+                `"${item.unit}"`,
+                item.price.toFixed(2),
+                item.total.toFixed(2)
+              ];
+              csvRows.push(row.join(","));
+            });
+            
+            csvRows.push(`"","","","","Genel Toplam:","${bom.totalCost.toFixed(2)}"`);
+            
+            const csvString = "\ufeff" + csvRows.join("\n");
+            const blob = new Blob([csvString], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "GES_Metraj_ve_Maliyet.csv";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+          };
+
+          const handlePriceChange = (key, value) => {
+            setPrices(prev => ({ ...prev, [key]: Number(value) }));
+          };
+
+          const isSharedRailView = roofType !== 'flat' && ((railDirection === 'horizontal' && orientation === 'landscape') || (railDirection === 'vertical' && orientation === 'portrait'));
+          const savedPercentage = isSharedRailView ? Math.round((1 - (railDirection === 'horizontal' ? (rows + 1) / (rows * 2) : (cols + 1) / (cols * 2))) * 100) : 0;
+
+          return (
+            <div className="min-h-screen bg-slate-50 p-4 md:p-8 font-sans text-slate-800">
+              <div className="max-w-6xl mx-auto space-y-6">
+                
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-4">
+                  <div className="bg-blue-600 p-3 rounded-xl text-white">
+                    <Wrench size={28} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Sütun Sayısı</label>
-                    <input type="number" min="1" max="50" value={cols} onChange={(e) => setCols(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <h1 className="text-2xl font-bold text-slate-900">Çatı GES Konstrüksiyon Hesaplayıcı</h1>
+                    <p className="text-slate-500">Çatı tiplerine göre gerçekçi metraj ve donanım maliyeti dökümü</p>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 pt-2">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Grup Sayısı</label>
-                    <input type="number" min="1" max="100" value={blockCount} onChange={(e) => setBlockCount(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    <p className="text-[10px] text-slate-400 mt-1">Bu dizilimden kaç adet var?</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Çatı Tipi</label>
-                    <select value={roofType} onChange={(e) => {
-                      setRoofType(e.target.value);
-                      if (e.target.value === 'flat') {
-                        setOrientation('landscape'); // Düz çatıda yataya zorla
-                      } else if (e.target.value === 'tile') {
-                        setMountingSystem('continuous');
-                      }
-                    }} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="flat">Düz Beton Çatı (Açılı)</option>
-                      <option value="tile">Kiremit Çatı</option>
-                      <option value="sandwich">Sandviç / Trapez Çatı</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                  <div className={roofType === 'flat' ? 'opacity-60 pointer-events-none' : ''}>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Yerleşim Yönü</label>
-                    <select 
-                      value={roofType === 'flat' ? 'landscape' : orientation} 
-                      onChange={(e) => setOrientation(e.target.value)} 
-                      disabled={roofType === 'flat'}
-                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
-                    >
-                      <option value="portrait">Dikey (Portrait)</option>
-                      <option value="landscape">Yatay (Landscape)</option>
-                    </select>
-                    {roofType === 'flat' && <p className="text-[10px] text-slate-500 mt-1">Sadece yatay yerleşim.</p>}
-                  </div>
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                   
-                  {/* Düz çatıda Ray Yönü ayarı gereksizdir, gizleyelim veya devre dışı bırakalım */}
-                  <div className={roofType === 'flat' ? 'hidden' : ''}>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">Ray Yönü</label>
-                    <select value={railDirection} onChange={(e) => setRailDirection(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                      <option value="horizontal">Yatay (Satırlar Boyunca)</option>
-                      <option value="vertical">Dikey (Sütunlar Boyunca)</option>
-                    </select>
-                  </div>
-                </div>
+                  <div className="lg:col-span-4 space-y-6">
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                      <h2 className="text-lg font-semibold mb-4 flex items-center">
+                        <Settings className="mr-2 text-blue-600" size={20} />
+                        Panel ve Dizilim Ayarları
+                      </h2>
+                      
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Satır Sayısı</label>
+                            <input type="number" min="1" max="10" value={rows} onChange={(e) => setRows(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Sütun Sayısı</label>
+                            <input type="number" min="1" max="50" value={cols} onChange={(e) => setCols(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          </div>
+                        </div>
 
-                {roofType === 'sandwich' && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Montaj Tipi</label>
-                      <select value={mountingSystem} onChange={(e) => setMountingSystem(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <option value="continuous">Sürekli Ray</option>
-                        <option value="short">Kısa Profil</option>
-                      </select>
+                        <div className="grid grid-cols-2 gap-4 pt-2">
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Grup Sayısı</label>
+                            <input type="number" min="1" max="100" value={blockCount} onChange={(e) => setBlockCount(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            <p className="text-[10px] text-slate-400 mt-1">Bu dizilimden kaç adet var?</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Çatı Tipi</label>
+                            <select value={roofType} onChange={(e) => {
+                              setRoofType(e.target.value);
+                              if (e.target.value === 'flat') {
+                                setOrientation('landscape'); 
+                              } else if (e.target.value === 'tile') {
+                                setMountingSystem('continuous');
+                              }
+                            }} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                              <option value="flat">Düz Beton Çatı (Açılı)</option>
+                              <option value="tile">Kiremit Çatı</option>
+                              <option value="sandwich">Sandviç / Trapez Çatı</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                          <div className={roofType === 'flat' ? 'opacity-60 pointer-events-none' : ''}>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Yerleşim Yönü</label>
+                            <select 
+                              value={roofType === 'flat' ? 'landscape' : orientation} 
+                              onChange={(e) => setOrientation(e.target.value)} 
+                              disabled={roofType === 'flat'}
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-slate-100"
+                            >
+                              <option value="portrait">Dikey (Portrait)</option>
+                              <option value="landscape">Yatay (Landscape)</option>
+                            </select>
+                            {roofType === 'flat' && <p className="text-[10px] text-slate-500 mt-1">Sadece yatay yerleşim.</p>}
+                          </div>
+                          
+                          <div className={roofType === 'flat' ? 'hidden' : ''}>
+                            <label className="block text-xs font-medium text-slate-500 mb-1">Ray Yönü</label>
+                            <select value={railDirection} onChange={(e) => setRailDirection(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                              <option value="horizontal">Yatay (Satırlar Boyunca)</option>
+                              <option value="vertical">Dikey (Sütunlar Boyunca)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        {roofType === 'sandwich' && (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            <div>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">Montaj Tipi</label>
+                              <select value={mountingSystem} onChange={(e) => setMountingSystem(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="continuous">Sürekli Ray</option>
+                                <option value="short">Kısa Profil</option>
+                              </select>
+                            </div>
+                            {mountingSystem === 'short' && (
+                              <div>
+                                <label className="block text-xs font-medium text-slate-500 mb-1">Hadve Aralığı (cm)</label>
+                                <input type="number" min="10" max="100" value={ribSpacing} onChange={(e) => setRibSpacing(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                                <p className="text-[10px] text-slate-400 mt-1">Ray boyu: {ribSpacing + 5}cm olacak</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        
+                        <div className="pt-4 border-t border-slate-100">
+                          <h3 className="text-sm font-medium text-slate-700 mb-3">Panel Ebatları (mm)</h3>
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">En (Genişlik)</label>
+                              <input type="number" value={panelWidth} onChange={(e) => setPanelWidth(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Boy (Uzunluk)</label>
+                              <input type="number" value={panelLength} onChange={(e) => setPanelLength(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                            <div>
+                              <label className="block text-xs text-slate-500 mb-1">Kalınlık (Çerçeve)</label>
+                              <input type="number" value={panelThickness} onChange={(e) => setPanelThickness(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    {mountingSystem === 'short' && (
-                      <div>
-                        <label className="block text-xs font-medium text-slate-500 mb-1">Hadve Aralığı (cm)</label>
-                        <input type="number" min="10" max="100" value={ribSpacing} onChange={(e) => setRibSpacing(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                        <p className="text-[10px] text-slate-400 mt-1">Ray boyu: {ribSpacing + 5}cm olacak</p>
+
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
+                      <h2 className="text-lg font-semibold mb-4 flex items-center">
+                        <DollarSign className="mr-2 text-emerald-600" size={20} />
+                        Birim Fiyatlar (USD)
+                      </h2>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        {bom.roofType !== 'flat' && bom.mountingSystem === 'continuous' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1">Sigma Profil (/m)</label>
+                            <input type="number" step="0.1" value={prices.rail} onChange={(e) => handlePriceChange('rail', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                          </div>
+                        )}
+                        {bom.roofType !== 'flat' && bom.mountingSystem === 'short' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1">Kısa Profil (/Adet)</label>
+                            <input type="number" step="0.1" value={prices.shortProfile} onChange={(e) => handlePriceChange('shortProfile', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                          </div>
+                        )}
+                        {bom.roofType === 'flat' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1">Üçgen Ayak (/Set)</label>
+                            <input type="number" step="1" value={prices.triangle} onChange={(e) => handlePriceChange('triangle', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                          </div>
+                        )}
+                        {bom.roofType === 'tile' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1">Kiremit Kancası</label>
+                            <input type="number" step="0.1" value={prices.hook} onChange={(e) => handlePriceChange('hook', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                          </div>
+                        )}
+                        {bom.roofType === 'sandwich' && bom.mountingSystem === 'continuous' && (
+                          <div>
+                            <label className="block text-slate-500 mb-1">L-Ayak Seti</label>
+                            <input type="number" step="0.1" value={prices.lFeet} onChange={(e) => handlePriceChange('lFeet', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                          </div>
+                        )}
+                        <div>
+                          <label className="block text-slate-500 mb-1">Orta Tutucu</label>
+                          <input type="number" step="0.05" value={prices.midClamp} onChange={(e) => handlePriceChange('midClamp', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                        </div>
+                        <div>
+                          <label className="block text-slate-500 mb-1">Kenar Tutucu</label>
+                          <input type="number" step="0.05" value={prices.endClamp} onChange={(e) => handlePriceChange('endClamp', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-2xl shadow-sm text-white">
+                      <h2 className="text-lg font-semibold mb-2 flex items-center text-slate-200">
+                        <DollarSign className="mr-2 text-emerald-400" size={20} />
+                        Tahmini Maliyet
+                      </h2>
+                      <div className="text-4xl font-bold text-white mb-1">${bom.totalCost}</div>
+                      <p className="text-sm text-slate-400 mb-4">Malzeme maliyeti (KDV ve işçilik hariç)</p>
+                      <div className="bg-white/10 p-3 rounded-lg flex items-start text-xs text-slate-300">
+                        <Info size={16} className="mr-2 flex-shrink-0 mt-0.5 text-blue-300" />
+                        <p>Maliyet panel başına ortalama ${(bom.totalCost / bom.totalPanels || 0).toFixed(1)} olarak hesaplanmıştır. {bom.roofType === 'flat' ? 'Sadece üçgen açılı ayaklar ve bağlantı ekipmanları dahil edilmiştir (Ekstra sigma profil kullanılmaz).' : 'Alüminyum ve paslanmaz konstrüksiyonu kapsar.'}</p>
+                      </div>
+                    </div>
+
+                    {isSharedRailView && (
+                      <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-sm">
+                        <h3 className="text-amber-800 font-semibold text-sm flex items-center mb-1">
+                          <Info size={18} className="mr-2" />
+                          Ortak Profil Avantajı Aktif
+                        </h3>
+                        <p className="text-xs text-amber-700 leading-relaxed">
+                          Panellerin uzun kenarlarıyla rayların ekseni aynı olduğu için satırlar/sütunlar arası raylar birleştirildi. Bu sayede profil metrajında <strong>%{savedPercentage} oranında tasarruf</strong> sağlandı.
+                        </p>
                       </div>
                     )}
                   </div>
-                )}
-                
-                <div className="pt-4 border-t border-slate-100">
-                  <h3 className="text-sm font-medium text-slate-700 mb-3">Panel Ebatları (mm)</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">En (Genişlik)</label>
-                      <input type="number" value={panelWidth} onChange={(e) => setPanelWidth(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Boy (Uzunluk)</label>
-                      <input type="number" value={panelLength} onChange={(e) => setPanelLength(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-slate-500 mb-1">Kalınlık (Çerçeve)</label>
-                      <input type="number" value={panelThickness} onChange={(e) => setPanelThickness(Number(e.target.value))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Fiyat Ayarları */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-              <h2 className="text-lg font-semibold mb-4 flex items-center">
-                <DollarSign className="mr-2 text-emerald-600" size={20} />
-                Birim Fiyatlar (USD)
-              </h2>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                {bom.roofType !== 'flat' && bom.mountingSystem === 'continuous' && (
-                  <div>
-                    <label className="block text-slate-500 mb-1">Sigma Profil (/m)</label>
-                    <input type="number" step="0.1" value={prices.rail} onChange={(e) => handlePriceChange('rail', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
-                  </div>
-                )}
-                {bom.roofType !== 'flat' && bom.mountingSystem === 'short' && (
-                  <div>
-                    <label className="block text-slate-500 mb-1">Kısa Profil (/Adet)</label>
-                    <input type="number" step="0.1" value={prices.shortProfile} onChange={(e) => handlePriceChange('shortProfile', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
-                  </div>
-                )}
-                {bom.roofType === 'flat' && (
-                  <div>
-                    <label className="block text-slate-500 mb-1">Üçgen Ayak (/Set)</label>
-                    <input type="number" step="1" value={prices.triangle} onChange={(e) => handlePriceChange('triangle', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
-                  </div>
-                )}
-                {bom.roofType === 'tile' && (
-                  <div>
-                    <label className="block text-slate-500 mb-1">Kiremit Kancası</label>
-                    <input type="number" step="0.1" value={prices.hook} onChange={(e) => handlePriceChange('hook', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
-                  </div>
-                )}
-                {bom.roofType === 'sandwich' && bom.mountingSystem === 'continuous' && (
-                  <div>
-                    <label className="block text-slate-500 mb-1">L-Ayak Seti</label>
-                    <input type="number" step="0.1" value={prices.lFeet} onChange={(e) => handlePriceChange('lFeet', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
-                  </div>
-                )}
-                <div>
-                  <label className="block text-slate-500 mb-1">Orta Tutucu</label>
-                  <input type="number" step="0.05" value={prices.midClamp} onChange={(e) => handlePriceChange('midClamp', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
-                </div>
-                <div>
-                  <label className="block text-slate-500 mb-1">Kenar Tutucu</label>
-                  <input type="number" step="0.05" value={prices.endClamp} onChange={(e) => handlePriceChange('endClamp', e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-md" />
-                </div>
-              </div>
-            </div>
+                  <div className="lg:col-span-8 space-y-6">
+                    
+                    <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                      <h2 className="text-lg font-semibold mb-6 flex items-center">
+                        <Grid className="mr-2 text-blue-600" size={20} />
+                        Çatı Yerleşim Planı ({bom.totalPanels} Panel {blockCount > 1 ? `- Toplam ${blockCount} Grup` : ''})
+                      </h2>
+                      
+                      <div className="relative w-full rounded-xl shadow-inner overflow-hidden border border-slate-200" style={{
+                          backgroundColor: roofType === 'tile' ? '#9a3412' : roofType === 'flat' ? '#3f3f46' : '#e2e8f0', 
+                          backgroundImage: roofType === 'tile' 
+                            ? 'repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(0,0,0,0.1) 20px, rgba(0,0,0,0.1) 22px), repeating-linear-gradient(90deg, transparent, transparent 30px, rgba(0,0,0,0.15) 30px, rgba(0,0,0,0.15) 32px)'
+                            : roofType === 'flat'
+                            ? 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)' 
+                            : 'repeating-linear-gradient(45deg, #cbd5e1 25%, transparent 25%, transparent 75%, #cbd5e1 75%, #cbd5e1), repeating-linear-gradient(45deg, #cbd5e1 25%, #e2e8f0 25%, #e2e8f0 75%, #cbd5e1 75%, #cbd5e1)',
+                          backgroundSize: roofType === 'flat' ? '15px 15px' : '40px 40px'
+                        }}>
+                        <div className="w-full p-8 overflow-auto max-h-[500px] min-h-[350px]" style={{ perspective: roofType === 'flat' ? '1200px' : 'none' }}>
+                          <div className="w-fit m-auto flex flex-col items-center" style={{ gap: roofType === 'flat' ? '24px' : '4px', paddingTop: roofType === 'flat' ? '20px' : '0' }}>
+                            {Array.from({ length: rows }).map((_, rIndex) => (
+                              <div key={rIndex} className="flex relative" style={{ gap: roofType === 'flat' ? '6px' : '4px' }}>
+                                
+                                {bom.roofType !== 'flat' && bom.mountingSystem === 'continuous' && railDirection === 'horizontal' && (
+                                  <>
+                                    {!isSharedRailView ? (
+                                      <>
+                                        <div className="absolute top-[25%] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />
+                                        <div className="absolute bottom-[25%] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />
+                                      </>
+                                    ) : (
+                                      <>
+                                        {rIndex === 0 && <div className="absolute -top-[6px] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />}
+                                        <div className="absolute -bottom-[6px] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />
+                                      </>
+                                    )}
+                                  </>
+                                )}
 
-            {/* Maliyet Özeti */}
-            <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-2xl shadow-sm text-white">
-              <h2 className="text-lg font-semibold mb-2 flex items-center text-slate-200">
-                <DollarSign className="mr-2 text-emerald-400" size={20} />
-                Tahmini Maliyet
-              </h2>
-              <div className="text-4xl font-bold text-white mb-1">${bom.totalCost}</div>
-              <p className="text-sm text-slate-400 mb-4">Malzeme maliyeti (KDV ve işçilik hariç)</p>
-              <div className="bg-white/10 p-3 rounded-lg flex items-start text-xs text-slate-300">
-                <Info size={16} className="mr-2 flex-shrink-0 mt-0.5 text-blue-300" />
-                <p>Maliyet panel başına ortalama ${(bom.totalCost / bom.totalPanels || 0).toFixed(1)} olarak hesaplanmıştır. {bom.roofType === 'flat' ? 'Sadece üçgen açılı ayaklar ve bağlantı ekipmanları dahil edilmiştir (Ekstra sigma profil kullanılmaz).' : 'Alüminyum ve paslanmaz konstrüksiyonu kapsar.'}</p>
-              </div>
-            </div>
+                                {Array.from({ length: cols }).map((_, cIndex) => {
+                                  const w = bom.activeOrientation === 'portrait' ? panelWidth / 15 : panelLength / 15;
+                                  const h = bom.activeOrientation === 'portrait' ? panelLength / 15 : panelWidth / 15;
 
-            {isSharedRailView && (
-              <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl shadow-sm">
-                <h3 className="text-amber-800 font-semibold text-sm flex items-center mb-1">
-                  <Info size={18} className="mr-2" />
-                  Ortak Profil Avantajı Aktif
-                </h3>
-                <p className="text-xs text-amber-700 leading-relaxed">
-                  Panellerin uzun kenarlarıyla rayların ekseni aynı olduğu için satırlar/sütunlar arası raylar birleştirildi. Bu sayede profil metrajında <strong>%{savedPercentage} oranında tasarruf</strong> sağlandı.
-                </p>
-              </div>
-            )}
-          </div>
+                                  return (
+                                    <div key={cIndex} className="relative z-10 shrink-0"
+                                      style={{
+                                        width: `${w}px`,
+                                        height: `${h}px`,
+                                        minWidth: bom.activeOrientation === 'portrait' ? '40px' : '80px',
+                                        minHeight: bom.activeOrientation === 'portrait' ? '80px' : '40px',
+                                        transform: roofType === 'flat' ? 'rotateX(30deg)' : 'none',
+                                        transformOrigin: 'bottom',
+                                        transformStyle: 'preserve-3d',
+                                        boxShadow: roofType === 'flat' ? '0px 25px 20px -10px rgba(0,0,0,0.7)' : '0 4px 6px -1px rgba(0,0,0,0.3)',
+                                        transition: 'transform 0.3s ease'
+                                      }}
+                                    >
+                                      <div className="absolute inset-0 bg-[#1e293b] border-2 border-[#475569] rounded-sm flex items-center justify-center overflow-hidden">
+                                        <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none"></div>
+                                        <div className="w-full h-full opacity-30 pointer-events-none" style={{
+                                          backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)',
+                                          backgroundSize: bom.activeOrientation === 'portrait' ? '20% 10%' : '10% 20%'
+                                        }}></div>
+                                      </div>
 
-          {/* Sağ Kolon: Görsel ve Liste */}
-          <div className="lg:col-span-8 space-y-6">
-            
-            {/* Görselleştirme */}
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <h2 className="text-lg font-semibold mb-6 flex items-center">
-                <Grid className="mr-2 text-blue-600" size={20} />
-                Çatı Yerleşim Planı ({bom.totalPanels} Panel {blockCount > 1 ? `- Toplam ${blockCount} Grup` : ''})
-              </h2>
-              
-              <div className="relative w-full rounded-xl shadow-inner overflow-hidden border border-slate-200" style={{
-                  backgroundColor: roofType === 'tile' ? '#9a3412' : roofType === 'flat' ? '#3f3f46' : '#e2e8f0', // Beton zemin rengi koyulaştırıldı
-                  backgroundImage: roofType === 'tile' 
-                    ? 'repeating-linear-gradient(0deg, transparent, transparent 20px, rgba(0,0,0,0.1) 20px, rgba(0,0,0,0.1) 22px), repeating-linear-gradient(90deg, transparent, transparent 30px, rgba(0,0,0,0.15) 30px, rgba(0,0,0,0.15) 32px)'
-                    : roofType === 'flat'
-                    ? 'radial-gradient(circle, rgba(255,255,255,0.05) 1px, transparent 1px)' // İnce beton dokusu
-                    : 'repeating-linear-gradient(45deg, #cbd5e1 25%, transparent 25%, transparent 75%, #cbd5e1 75%, #cbd5e1), repeating-linear-gradient(45deg, #cbd5e1 25%, #e2e8f0 25%, #e2e8f0 75%, #cbd5e1 75%, #cbd5e1)',
-                  backgroundSize: roofType === 'flat' ? '15px 15px' : '40px 40px'
-                }}>
-                <div className="w-full p-8 overflow-auto max-h-[500px] min-h-[350px]" style={{ perspective: roofType === 'flat' ? '1200px' : 'none' }}>
-                  <div className="w-fit m-auto flex flex-col items-center" style={{ gap: roofType === 'flat' ? '24px' : '4px', paddingTop: roofType === 'flat' ? '20px' : '0' }}>
-                    {Array.from({ length: rows }).map((_, rIndex) => (
-                      <div key={rIndex} className="flex relative" style={{ gap: roofType === 'flat' ? '6px' : '4px' }}>
-                        
-                        {/* Ray Çizimleri (Sadece Kiremit/Sandviç için) */}
-                        {bom.roofType !== 'flat' && bom.mountingSystem === 'continuous' && railDirection === 'horizontal' && (
-                          <>
-                            {!isSharedRailView ? (
-                              <>
-                                <div className="absolute top-[25%] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />
-                                <div className="absolute bottom-[25%] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />
-                              </>
-                            ) : (
-                              <>
-                                {rIndex === 0 && <div className="absolute -top-[6px] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />}
-                                <div className="absolute -bottom-[6px] -left-4 -right-4 h-2 bg-slate-400/90 rounded-full z-0 shadow-sm" />
-                              </>
-                            )}
-                          </>
-                        )}
+                                      {roofType === 'flat' && (
+                                        <>
+                                          <div className="absolute -left-[4px] bottom-0 w-[8px] h-[100%] z-[-1]" style={{ transform: 'translateZ(-1px)' }}>
+                                            <div className="absolute bottom-0 w-full h-[15%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
+                                            <div className="absolute top-[10%] w-full h-[30%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
+                                          </div>
 
-                        {Array.from({ length: cols }).map((_, cIndex) => {
-                          const w = bom.activeOrientation === 'portrait' ? panelWidth / 15 : panelLength / 15;
-                          const h = bom.activeOrientation === 'portrait' ? panelLength / 15 : panelWidth / 15;
+                                          {cIndex === cols - 1 && (
+                                            <div className="absolute -right-[4px] bottom-0 w-[8px] h-[100%] z-[-1]" style={{ transform: 'translateZ(-1px)' }}>
+                                              <div className="absolute bottom-0 w-full h-[15%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
+                                              <div className="absolute top-[10%] w-full h-[30%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
 
-                          return (
-                            <div key={cIndex} className="relative z-10 shrink-0"
-                              style={{
-                                width: `${w}px`,
-                                height: `${h}px`,
-                                minWidth: bom.activeOrientation === 'portrait' ? '40px' : '80px',
-                                minHeight: bom.activeOrientation === 'portrait' ? '80px' : '40px',
-                                // DÜZ ÇATI GÖRSELİ: Paneller fotoğraftaki gibi bireysel olarak eğimli çizilir
-                                transform: roofType === 'flat' ? 'rotateX(30deg)' : 'none',
-                                transformOrigin: 'bottom',
-                                transformStyle: 'preserve-3d',
-                                boxShadow: roofType === 'flat' ? '0px 25px 20px -10px rgba(0,0,0,0.7)' : '0 4px 6px -1px rgba(0,0,0,0.3)',
-                                transition: 'transform 0.3s ease'
-                              }}
-                            >
-                              {/* Panel Yüzeyi */}
-                              <div className="absolute inset-0 bg-[#1e293b] border-2 border-[#475569] rounded-sm flex items-center justify-center overflow-hidden">
-                                {/* Cam/Hücre Yansıma Efekti */}
-                                <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent pointer-events-none"></div>
-                                {/* Panel içi hücre çizgileri */}
-                                <div className="w-full h-full opacity-30 pointer-events-none" style={{
-                                  backgroundImage: 'linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)',
-                                  backgroundSize: bom.activeOrientation === 'portrait' ? '20% 10%' : '10% 20%'
-                                }}></div>
-                              </div>
-
-                              {/* DÜZ ÇATI AYAK GÖRSELLEŞTİRMESİ (Fotoğraftaki gibi sadece panel birleşim yerlerine) */}
-                              {roofType === 'flat' && (
-                                <>
-                                  {/* Sol Ayak (Her panelin soluna) */}
-                                  <div className="absolute -left-[4px] bottom-0 w-[8px] h-[100%] z-[-1]" style={{ transform: 'translateZ(-1px)' }}>
-                                    {/* Ön kısa bacak */}
-                                    <div className="absolute bottom-0 w-full h-[15%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
-                                    {/* Arka uzun bacak */}
-                                    <div className="absolute top-[10%] w-full h-[30%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
-                                  </div>
-
-                                  {/* Sağ Ayak (Sadece en sağdaki panelin sağına kapanış ayağı) */}
-                                  {cIndex === cols - 1 && (
-                                    <div className="absolute -right-[4px] bottom-0 w-[8px] h-[100%] z-[-1]" style={{ transform: 'translateZ(-1px)' }}>
-                                      {/* Ön kısa bacak */}
-                                      <div className="absolute bottom-0 w-full h-[15%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
-                                      {/* Arka uzun bacak */}
-                                      <div className="absolute top-[10%] w-full h-[30%] bg-gradient-to-t from-slate-300 to-slate-500 rounded-sm shadow-md border border-slate-600"></div>
+                                      {bom.roofType !== 'flat' && bom.mountingSystem === 'continuous' && railDirection === 'vertical' && (
+                                        <>
+                                          {!isSharedRailView ? (
+                                            <>
+                                              <div className={`absolute left-[25%] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />
+                                              <div className={`absolute right-[25%] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />
+                                            </>
+                                          ) : (
+                                            <>
+                                              {cIndex === 0 && <div className={`absolute -left-[6px] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />}
+                                              <div className={`absolute -right-[6px] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />
+                                            </>
+                                          )}
+                                        </>
+                                      )}
+                                      {bom.roofType === 'sandwich' && bom.mountingSystem === 'short' && railDirection === 'horizontal' && (
+                                        <>
+                                          <div className="absolute top-[25%] -left-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
+                                          <div className="absolute bottom-[25%] -left-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
+                                          {cIndex === cols - 1 && (
+                                            <>
+                                              <div className="absolute top-[25%] -right-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
+                                              <div className="absolute bottom-[25%] -right-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
+                                            </>
+                                          )}
+                                        </>
+                                      )}
                                     </div>
-                                  )}
-                                </>
-                              )}
-
-                              {/* Diğer çatı tipleri için dikey ray veya kısa profil görselleştirmeleri */}
-                              {bom.roofType !== 'flat' && bom.mountingSystem === 'continuous' && railDirection === 'vertical' && (
-                                <>
-                                  {!isSharedRailView ? (
-                                    <>
-                                      <div className={`absolute left-[25%] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />
-                                      <div className={`absolute right-[25%] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />
-                                    </>
-                                  ) : (
-                                    <>
-                                      {cIndex === 0 && <div className={`absolute -left-[6px] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />}
-                                      <div className={`absolute -right-[6px] w-2 bg-slate-400/90 z-[-1] ${rIndex === 0 ? '-top-4' : '-top-[2px]'} ${rIndex === rows - 1 ? '-bottom-4' : '-bottom-[2px]'}`} />
-                                    </>
-                                  )}
-                                </>
-                              )}
-                              {/* Kısa profil (Sandviç) görselleri... */}
-                              {bom.roofType === 'sandwich' && bom.mountingSystem === 'short' && railDirection === 'horizontal' && (
-                                <>
-                                  <div className="absolute top-[25%] -left-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
-                                  <div className="absolute bottom-[25%] -left-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
-                                  {cIndex === cols - 1 && (
-                                    <>
-                                      <div className="absolute top-[25%] -right-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
-                                      <div className="absolute bottom-[25%] -right-[20%] w-[40%] h-[10px] bg-slate-300 border border-slate-500/50 z-[-1] rounded-sm" />
-                                    </>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
+                                  );
+                                })}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                        
+                        <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 shadow-md border border-slate-200 z-20">
+                          {bom.roofType === 'flat' ? `Toplam Alan Genişliği: ${bom.railLengthPerLine} m` : (bom.mountingSystem === 'continuous' ? `Ray Uzunluğu: ${bom.railLengthPerLine} m` : `Kısa Profil Boyu: ${bom.shortProfileLength} mm`)}
+                        </div>
                       </div>
-                    ))}
+                    </div>
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                      <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <h2 className="text-lg font-semibold flex items-center">
+                          <Wrench className="mr-2 text-blue-600" size={20} />
+                          Gerekli Malzeme Listesi (BOM)
+                        </h2>
+                        <div className="flex items-center space-x-3">
+                          <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold border border-blue-100 hidden md:block">
+                            {bom.roofType === 'flat' ? 'Raysız Ayak Sistemi' : 'Raylı Sistem'}
+                          </span>
+                          <button onClick={handleExportCSV} className="flex items-center space-x-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-sm">
+                            <FileSpreadsheet size={16} />
+                            <span>Excel'e Aktar</span>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm text-left">
+                          <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200">
+                            <tr>
+                              <th className="px-6 py-4">Malzeme Adı</th>
+                              <th className="px-6 py-4">Teknik Özellik / Boyut</th>
+                              <th className="px-6 py-4 text-center">Miktar</th>
+                              <th className="px-6 py-4 text-center">Birim</th>
+                              <th className="px-6 py-4 text-right">Birim Fiyat</th>
+                              <th className="px-6 py-4 text-right">Toplam</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100">
+                            {bom.items && bom.items.map((item, idx) => (
+                              <tr key={idx} className={`hover:bg-slate-50/50 transition-colors ${item.highlight ? 'bg-amber-50/30' : ''}`}>
+                                <td className={`px-6 py-4 font-medium ${item.highlight ? 'text-amber-900' : 'text-slate-800'}`}>{item.name}</td>
+                                <td className={`px-6 py-4 ${item.highlight ? 'text-amber-700' : 'text-slate-500'}`}>{item.spec}</td>
+                                <td className={`px-6 py-4 text-center font-bold ${item.highlight ? 'text-amber-600' : 'text-blue-600'}`}>
+                                  {item.qty}
+                                  {item.desc && <><br/><span className="text-[10px] text-slate-400 font-normal">{item.desc}</span></>}
+                                </td>
+                                <td className={`px-6 py-4 text-center ${item.highlight ? 'text-amber-600' : 'text-slate-500'}`}>{item.unit}</td>
+                                <td className="px-6 py-4 text-right text-slate-600">${item.price.toFixed(2)}</td>
+                                <td className="px-6 py-4 text-right font-semibold text-emerald-600">${item.total.toFixed(2)}</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-slate-50 border-t-2 border-slate-200">
+                              <td colSpan="5" className="px-6 py-4 text-right font-bold text-slate-700">Genel Toplam:</td>
+                              <td className="px-6 py-4 text-right font-bold text-emerald-600 text-lg">${bom.totalCost?.toFixed(2)}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+
                   </div>
                 </div>
-                
-                <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 shadow-md border border-slate-200 z-20">
-                  {bom.roofType === 'flat' ? `Toplam Alan Genişliği: ${bom.railLengthPerLine} m` : (bom.mountingSystem === 'continuous' ? `Ray Uzunluğu: ${bom.railLengthPerLine} m` : `Kısa Profil Boyu: ${bom.shortProfileLength} mm`)}
-                </div>
               </div>
             </div>
+          );
+        };
 
-            {/* Malzeme Listesi (BOM) */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <h2 className="text-lg font-semibold flex items-center">
-                  <Wrench className="mr-2 text-blue-600" size={20} />
-                  Gerekli Malzeme Listesi (BOM)
-                </h2>
-                <div className="flex items-center space-x-3">
-                  <span className="px-3 py-1 bg-blue-50 text-blue-700 rounded-full text-xs font-bold border border-blue-100 hidden md:block">
-                    {bom.roofType === 'flat' ? 'Raysız Ayak Sistemi' : 'Raylı Sistem'}
-                  </span>
-                  <button onClick={handleExportCSV} className="flex items-center space-x-1 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors shadow-sm">
-                    <FileSpreadsheet size={16} />
-                    <span>Excel'e Aktar</span>
-                  </button>
-                </div>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                  <thead className="bg-slate-50 text-slate-600 font-medium border-b border-slate-200">
-                    <tr>
-                      <th className="px-6 py-4">Malzeme Adı</th>
-                      <th className="px-6 py-4">Teknik Özellik / Boyut</th>
-                      <th className="px-6 py-4 text-center">Miktar</th>
-                      <th className="px-6 py-4 text-center">Birim</th>
-                      <th className="px-6 py-4 text-right">Birim Fiyat</th>
-                      <th className="px-6 py-4 text-right">Toplam</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {bom.items && bom.items.map((item, idx) => (
-                      <tr key={idx} className={`hover:bg-slate-50/50 transition-colors ${item.highlight ? 'bg-amber-50/30' : ''}`}>
-                        <td className={`px-6 py-4 font-medium ${item.highlight ? 'text-amber-900' : 'text-slate-800'}`}>{item.name}</td>
-                        <td className={`px-6 py-4 ${item.highlight ? 'text-amber-700' : 'text-slate-500'}`}>{item.spec}</td>
-                        <td className={`px-6 py-4 text-center font-bold ${item.highlight ? 'text-amber-600' : 'text-blue-600'}`}>
-                          {item.qty}
-                          {item.desc && <><br/><span className="text-[10px] text-slate-400 font-normal">{item.desc}</span></>}
-                        </td>
-                        <td className={`px-6 py-4 text-center ${item.highlight ? 'text-amber-600' : 'text-slate-500'}`}>{item.unit}</td>
-                        <td className="px-6 py-4 text-right text-slate-600">${item.price.toFixed(2)}</td>
-                        <td className="px-6 py-4 text-right font-semibold text-emerald-600">${item.total.toFixed(2)}</td>
-                      </tr>
-                    ))}
-                    <tr className="bg-slate-50 border-t-2 border-slate-200">
-                      <td colSpan="5" className="px-6 py-4 text-right font-bold text-slate-700">Genel Toplam:</td>
-                      <td className="px-6 py-4 text-right font-bold text-emerald-600 text-lg">${bom.totalCost?.toFixed(2)}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default App;
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
